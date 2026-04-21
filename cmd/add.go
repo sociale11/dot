@@ -12,6 +12,17 @@ import (
 
 var recursive bool
 
+var defaultIgnores = []string{
+	".git",
+	".svn",
+	".hg",
+	".DS_Store",
+	"node_modules",
+	"__pycache__",
+	".venv",
+	".mypy_cache",
+}
+
 var addCmd = &cobra.Command{
 	Use:   "add <path>...",
 	Short: "Track one or more files",
@@ -70,6 +81,14 @@ func addDir(dirPath, root, dotly string) error {
 		if walkErr != nil {
 			return walkErr
 		}
+
+		if shouldIgnore(d.Name()) {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
 		if d.IsDir() {
 			return nil
 		}
@@ -81,6 +100,7 @@ func addDir(dirPath, root, dotly string) error {
 		if info.Mode()&os.ModeSymlink != 0 {
 			return nil
 		}
+
 		if err := add(path, root, dotly); err != nil {
 			fmt.Fprintf(os.Stderr, "  ✗ %s: %v\n", path, err)
 			failed = append(failed, path)
@@ -171,4 +191,19 @@ func copyFile(src, dst string) error {
 		return fmt.Errorf("finalizing destination: %w", err)
 	}
 	return nil
+}
+
+func shouldIgnore(name string) bool {
+	for _, pattern := range defaultIgnores {
+		if name == pattern {
+			return true
+		}
+		if matched, _ := filepath.Match(pattern, name); matched {
+			return true
+		}
+	}
+	if strings.HasSuffix(name, "~") || strings.HasSuffix(name, ".swp") || strings.HasSuffix(name, ".swo") {
+		return true
+	}
+	return false
 }

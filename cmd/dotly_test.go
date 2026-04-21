@@ -282,3 +282,38 @@ func TestAdd_RecursiveSkipsExistingSymlinks(t *testing.T) {
 		t.Fatalf("recursive add over partially-tracked tree: %v", err)
 	}
 }
+
+func TestAdd_RecursiveSkipsGitDirectory(t *testing.T) {
+	root, dotly := setupTest(t)
+
+	dir := filepath.Join(root, "project")
+	writeFile(t, filepath.Join(dir, "README.md"), "readme")
+	writeFile(t, filepath.Join(dir, ".git/HEAD"), "ref: refs/heads/main")
+	writeFile(t, filepath.Join(dir, ".git/config"), "[core]")
+
+	if err := addPath(dir, root, dotly, true); err != nil {
+		t.Fatalf("add -r: %v", err)
+	}
+
+	// README.md should be tracked.
+	readme := filepath.Join(root, "project/README.md")
+	info, err := os.Lstat(readme)
+	if err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Errorf("expected README.md to be a symlink")
+	}
+
+	// .git contents must NOT be tracked.
+	gitHead := filepath.Join(root, "project/.git/HEAD")
+	info, err = os.Lstat(gitHead)
+	if err != nil {
+		t.Fatalf("lstat .git/HEAD: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		t.Error(".git/HEAD should not be a symlink")
+	}
+
+	// Tracked copy of .git should not exist in DOTLY either.
+	if _, err := os.Stat(filepath.Join(dotly, "project/.git")); !os.IsNotExist(err) {
+		t.Error("DOTLY should not contain a .git directory")
+	}
+}

@@ -3,15 +3,14 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"path"
 	"path/filepath"
 
 	"github.com/spf13/cobra"
 )
 
 var (
-	root  string // $HOME by default
-	dotly string // $HOME/.local/share/dotly by default
+	root  string // defaults to $HOME
+	dotly string // defaults to $HOME/.local/share/dotly
 )
 
 var rootCmd = &cobra.Command{
@@ -32,9 +31,6 @@ func init() {
 		fmt.Fprintln(os.Stderr, "could not determine home directory:", err)
 		os.Exit(1)
 	}
-
-	root = "/home/sociale/"
-	dotly = path.Join(root, ".local/share/dotly")
 
 	rootCmd.PersistentFlags().StringVar(&root, "root", home, "root directory (treated as $HOME)")
 	rootCmd.PersistentFlags().StringVar(&dotly, "dotly", filepath.Join(home, ".local/share/dotly"), "dotly storage directory")
