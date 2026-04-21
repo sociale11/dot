@@ -14,7 +14,7 @@ var restoreCmd = &cobra.Command{
 	Short: "Restore a tracked file to its original location and stop tracking it",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return restore(args[0])
+		return restore(args[0], root, dotly)
 	},
 }
 
@@ -22,7 +22,7 @@ func init() {
 	rootCmd.AddCommand(restoreCmd)
 }
 
-func restore(filePath string) error {
+func restore(filePath, root, dotly string) error {
 	absPath, err := filepath.Abs(filePath)
 	if err != nil {
 		return fmt.Errorf("resolving path: %w", err)
@@ -62,6 +62,11 @@ func restore(filePath string) error {
 
 	if err := os.Rename(tracked, absPath); err != nil {
 		return fmt.Errorf("restoring file: %w", err)
+	}
+
+	indexPath := filepath.Join(dotly, IndexFilename)
+	if err := RemoveFromIndex(indexPath, absPath); err != nil {
+		return fmt.Errorf("updating index: %w", err)
 	}
 
 	return nil

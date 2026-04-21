@@ -15,7 +15,7 @@ var addCmd = &cobra.Command{
 	Short: "Track a file by moving it to dotly and symlinking it back",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return add(args[0])
+		return add(args[0], root, dotly)
 	},
 }
 
@@ -23,7 +23,7 @@ func init() {
 	rootCmd.AddCommand(addCmd)
 }
 
-func add(filePath string) error {
+func add(filePath, root, dotly string) error {
 	if err := os.MkdirAll(dotly, 0755); err != nil {
 		return fmt.Errorf("initializing dotly dir: %w", err)
 	}
@@ -51,6 +51,12 @@ func add(filePath string) error {
 	if err := os.Symlink(dest, absPath); err != nil {
 		return fmt.Errorf("creating symlink: %w", err)
 	}
+
+	indexPath := filepath.Join(dotly, IndexFilename)
+	if err := AddToIndex(indexPath, Index{location: absPath, symlink: dest}); err != nil {
+		return fmt.Errorf("updating index: %w", err)
+	}
+
 	return nil
 }
 
