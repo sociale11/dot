@@ -224,3 +224,61 @@ func TestRestore_RejectsSymlinkToElsewhere(t *testing.T) {
 		t.Fatal("expected error for foreign symlink, got nil")
 	}
 }
+
+func TestAdd_DirectoryWithoutRecursiveFails(t *testing.T) {
+	root, dotly := setupTest(t)
+
+	dir := filepath.Join(root, ".config/nvim")
+	writeFile(t, filepath.Join(dir, "init.lua"), "content")
+
+	err := addPath(dir, root, dotly, false)
+	if err == nil {
+		t.Fatal("expected error for directory without -r")
+	}
+}
+
+func TestAdd_DirectoryRecursive(t *testing.T) {
+	root, dotly := setupTest(t)
+
+	dir := filepath.Join(root, ".config/nvim")
+	writeFile(t, filepath.Join(dir, "init.lua"), "a")
+	writeFile(t, filepath.Join(dir, "lua/plugins/foo.lua"), "b")
+	writeFile(t, filepath.Join(dir, "lazy-lock.json"), "c")
+
+	if err := addPath(dir, root, dotly, true); err != nil {
+		t.Fatalf("recursive add: %v", err)
+	}
+
+	// All three files should now be symlinks pointing into DOTLY.
+	for _, rel := range []string{".config/nvim/init.lua", ".config/nvim/lua/plugins/foo.lua", ".config/nvim/lazy-lock.json"} {
+		p := filepath.Join(root, rel)
+		info, err := os.Lstat(p)
+		if err != nil {
+			t.Errorf("%s: lstat: %v", rel, err)
+			continue
+		}
+		if info.Mode()&os.ModeSymlink == 0 {
+			t.Errorf("%s: expected symlink, got %v", rel, info.Mode())
+		}
+	}
+}
+
+func TestAdd_RecursiveSkipsExistingSymlinks(t *testing.T) {
+	// If the tree already contains symlinks (e.g., from a partial previous add),
+	// recursive add should skip them rather than erroring the whole walk.
+	root, dotly := setupTest(t)
+
+	dir := filepath.Join(root, ".config/nvim")
+	writeFile(t, filepath.Join(dir, "init.lua"), "a")
+	writeFile(t, filepath.Join(dir, "plugins.lua"), "b")
+
+	// Pre-track one of the files.
+	if err := add(filepath.Join(dir, "init.lua"), root, dotly); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	// Now recursive add on the parent directory should succeed.
+	if err := addPath(dir, root, dotly, true); err != nil {
+		t.Fatalf("recursive add over partially-tracked tree: %v", err)
+	}
+}

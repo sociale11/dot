@@ -10,17 +10,92 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var recursive bool
+
 var addCmd = &cobra.Command{
-	Use:   "add <path>",
-	Short: "Track a file by moving it to dotly and symlinking it back",
-	Args:  cobra.ExactArgs(1),
+	Use:   "add <path>...",
+	Short: "Track one or more files",
+	Args:  cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return add(args[0], root, dotly)
+		var failed []string
+		for _, arg := range args {
+			if err := addPath(arg, root, dotly, recursive); err != nil {
+				fmt.Fprintf(os.Stderr, "  ✗ %s: %v\n", arg, err)
+				failed = append(failed, arg)
+				continue
+			}
+		}
+		if len(failed) > 0 {
+			return fmt.Errorf("%d of %d failed", len(failed), len(args))
+		}
+		return nil
 	},
 }
 
 func init() {
+	addCmd.Flags().BoolVarP(&recursive, "recursive", "r", false, "recurse into directories")
 	rootCmd.AddCommand(addCmd)
+}
+
+// addPath dispatches to add() for files or walks directories when recursive is set.
+func addPath(filePath, root, dotly string, recursive bool) error {
+	absPath, err := filepath.Abs(filePath)
+	if err != nil {
+		return fmt.Errorf("resolving path: %w", err)
+	}
+
+	info, err := os.Lstat(absPath)
+	if err != nil {
+		return fmt.Errorf("stat: %w", err)
+	}
+
+	// Symlinks: let add() handle them (its guards will kick in).
+	if info.Mode()&os.ModeSymlink != 0 {
+		return add(absPath, root, dotly)
+	}
+
+	if info.IsDir() {
+		if !recursive {
+			return fmt.Errorf("%s is a directory (use -r to recurse)", absPath)
+		}
+		return addDir(absPath, root, dotly)
+	}
+
+	return add(absPath, root, dotly)
+}
+
+func addDir(dirPath, root, dotly string) error {
+	var failed []string
+	err := filepath.WalkDir(dirPath, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.IsDir() {
+			return nil
+		}
+
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return nil
+		}
+		if err := add(path, root, dotly); err != nil {
+			fmt.Fprintf(os.Stderr, "  ✗ %s: %v\n", path, err)
+			failed = append(failed, path)
+			return nil
+		}
+		fmt.Printf("  ✓ %s\n", path)
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("walking %s: %w", dirPath, err)
+	}
+	if len(failed) > 0 {
+		return fmt.Errorf("%d files in %s failed", len(failed), dirPath)
+	}
+	return nil
 }
 
 func add(filePath, root, dotly string) error {
@@ -39,6 +114,7 @@ func add(filePath, root, dotly string) error {
 			if err != nil {
 				return fmt.Errorf("inspecting existing symlink: %w", err)
 			}
+
 			// Is it a symlink into our DOTLY?
 			if rel, err := filepath.Rel(dotly, target); err == nil && !strings.HasPrefix(rel, "..") {
 				return fmt.Errorf("%s is already tracked (symlink to %s)", absPath, target)
