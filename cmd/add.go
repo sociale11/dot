@@ -77,17 +77,22 @@ func add(filePath, root, dotly string) error {
 func copyFile(src, dst string) error {
 	srcFile, err := os.Open(src)
 	if err != nil {
-		return err
+		return fmt.Errorf("opening source: %w", err)
 	}
 	defer srcFile.Close()
 
 	dstFile, err := os.Create(dst)
 	if err != nil {
-		return err
+		return fmt.Errorf("creating destination: %w", err)
 	}
+
 	if _, err := io.Copy(dstFile, srcFile); err != nil {
 		dstFile.Close()
-		return err
+		return fmt.Errorf("copying: %w", err)
 	}
-	return dstFile.Close()
+
+	if err := dstFile.Close(); err != nil {
+		return fmt.Errorf("finalizing destination: %w", err)
+	}
+	return nil
 }
