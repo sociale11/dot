@@ -100,6 +100,60 @@ func TestAdd_RejectsPathOutsideRoot(t *testing.T) {
 	}
 }
 
+func TestAdd_RefusesToReAddTrackedFile(t *testing.T) {
+	root, dotly := setupTest(t)
+
+	original := filepath.Join(root, ".zshrc")
+	writeFile(t, original, "important config")
+
+	// First add: should succeed.
+	if err := add(original, root, dotly); err != nil {
+		t.Fatalf("first add: %v", err)
+	}
+
+	// Second add: must fail, and the content must be preserved.
+	err := add(original, root, dotly)
+	if err == nil {
+		t.Fatal("expected re-add to fail, got nil")
+	}
+
+	// Critically: the file content must survive the failed re-add.
+	got, err := os.ReadFile(original)
+	if err != nil {
+		t.Fatalf("read after failed re-add: %v", err)
+	}
+	if string(got) != "important config" {
+		t.Errorf("content was modified during failed re-add: got %q", got)
+	}
+}
+
+func TestAdd_RefusesForeignSymlink(t *testing.T) {
+	root, dotly := setupTest(t)
+
+	// A symlink at original location pointing somewhere outside DOTLY.
+	elsewhere := filepath.Join(t.TempDir(), "elsewhere")
+	writeFile(t, elsewhere, "someone else's file")
+
+	original := filepath.Join(root, ".zshrc")
+	if err := os.Symlink(elsewhere, original); err != nil {
+		t.Fatalf("setup symlink: %v", err)
+	}
+
+	err := add(original, root, dotly)
+	if err == nil {
+		t.Fatal("expected add to refuse foreign symlink, got nil")
+	}
+
+	// The foreign symlink must still exist, pointing where it did.
+	target, err := os.Readlink(original)
+	if err != nil {
+		t.Fatalf("readlink: %v", err)
+	}
+	if target != elsewhere {
+		t.Errorf("symlink was modified: got %s, want %s", target, elsewhere)
+	}
+}
+
 func TestRestore_RoundTrip(t *testing.T) {
 	root, dotly := setupTest(t)
 

@@ -33,6 +33,20 @@ func add(filePath, root, dotly string) error {
 		return fmt.Errorf("resolving path: %w", err)
 	}
 
+	if info, err := os.Lstat(absPath); err == nil {
+		if info.Mode()&os.ModeSymlink != 0 {
+			target, err := os.Readlink(absPath)
+			if err != nil {
+				return fmt.Errorf("inspecting existing symlink: %w", err)
+			}
+			// Is it a symlink into our DOTLY?
+			if rel, err := filepath.Rel(dotly, target); err == nil && !strings.HasPrefix(rel, "..") {
+				return fmt.Errorf("%s is already tracked (symlink to %s)", absPath, target)
+			}
+			return fmt.Errorf("%s is a symlink to %s (not managed by dotly); refusing to touch it", absPath, target)
+		}
+	}
+
 	rel, err := filepath.Rel(root, absPath)
 	if err != nil || strings.HasPrefix(rel, "..") {
 		return fmt.Errorf("path %s is not under root %s", absPath, root)
