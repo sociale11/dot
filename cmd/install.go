@@ -34,12 +34,12 @@ func install(root, dotly string) error {
 
 	var failed []string
 	for _, e := range entries {
-		if err := installOne(e); err != nil {
-			fmt.Fprintf(os.Stderr, "  ✗ %s: %v\n", e.location, err)
-			failed = append(failed, e.location)
+		if err := installOne(e, root, dotly); err != nil {
+			fmt.Fprintf(os.Stderr, "  ✗ %s: %v\n", e.relPath, err)
+			failed = append(failed, e.relPath)
 			continue
 		}
-		fmt.Printf("  ✓ %s\n", e.location)
+		fmt.Printf("  ✓ %s\n", e.relPath)
 	}
 
 	if len(failed) > 0 {
@@ -48,32 +48,34 @@ func install(root, dotly string) error {
 	return nil
 }
 
-func installOne(e Index) error {
-	// Tracked file must exist in DOTLY.
-	if _, err := os.Stat(e.symlink); err != nil {
-		return fmt.Errorf("tracked file missing: %w", err)
+func installOne(e Index, root, dotly string) error {
+	source := filepath.Join(dotly, e.relPath)
+	target := filepath.Join(root, e.relPath)
+
+	// Tracked file/dir must exist in dotly.
+	if _, err := os.Stat(source); err != nil {
+		return fmt.Errorf("tracked entry missing: %w", err)
 	}
 
-	// Check what's currently at the original location.
-	info, err := os.Lstat(e.location)
+	// Check what's currently at the target location.
+	info, err := os.Lstat(target)
 	if err == nil {
-		// Something's there. Is it already the correct symlink?
 		if info.Mode()&os.ModeSymlink != 0 {
-			target, err := os.Readlink(e.location)
-			if err == nil && target == e.symlink {
-				return nil // already installed, nothing to do
+			existing, err := os.Readlink(target)
+			if err == nil && existing == source {
+				return nil // already installed
 			}
-			return fmt.Errorf("symlink exists but points elsewhere: %s", target)
+			return fmt.Errorf("symlink exists but points to %s, not %s", existing, source)
 		}
-		return fmt.Errorf("file already exists at %s (not a symlink)", e.location)
+		return fmt.Errorf("file already exists at %s (not a symlink)", target)
 	} else if !os.IsNotExist(err) {
 		return fmt.Errorf("checking location: %w", err)
 	}
 
 	// Make sure parent directory exists.
-	if err := os.MkdirAll(filepath.Dir(e.location), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
 		return fmt.Errorf("creating parent dir: %w", err)
 	}
 
-	return os.Symlink(e.symlink, e.location)
+	return os.Symlink(source, target)
 }

@@ -30,7 +30,7 @@ var addCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var failed []string
 		for _, arg := range args {
-			if err := addPath(arg, root, dotly, recursive); err != nil {
+			if err := addPath(arg, root, dotly); err != nil {
 				fmt.Fprintf(os.Stderr, "  ✗ %s: %v\n", arg, err)
 				failed = append(failed, arg)
 				continue
@@ -44,12 +44,10 @@ var addCmd = &cobra.Command{
 }
 
 func init() {
-	addCmd.Flags().BoolVarP(&recursive, "recursive", "r", false, "recurse into directories")
 	rootCmd.AddCommand(addCmd)
 }
 
-// addPath dispatches to add() for files or walks directories when recursive is set.
-func addPath(filePath, root, dotly string, recursive bool) error {
+func addPath(filePath, root, dotly string) error {
 	absPath, err := filepath.Abs(filePath)
 	if err != nil {
 		return fmt.Errorf("resolving path: %w", err)
@@ -60,15 +58,11 @@ func addPath(filePath, root, dotly string, recursive bool) error {
 		return fmt.Errorf("stat: %w", err)
 	}
 
-	// Symlinks: let add() handle them (its guards will kick in).
 	if info.Mode()&os.ModeSymlink != 0 {
 		return add(absPath, root, dotly)
 	}
 
 	if info.IsDir() {
-		if !recursive {
-			return fmt.Errorf("%s is a directory (use -r to recurse)", absPath)
-		}
 		return addDir(absPath, root, dotly)
 	}
 
@@ -76,45 +70,30 @@ func addPath(filePath, root, dotly string, recursive bool) error {
 }
 
 func addDir(dirPath, root, dotly string) error {
-	var failed []string
-	err := filepath.WalkDir(dirPath, func(path string, d os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-
-		if shouldIgnore(d.Name()) {
-			if d.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-
-		if d.IsDir() {
-			return nil
-		}
-
-		info, err := d.Info()
-		if err != nil {
-			return err
-		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			return nil
-		}
-
-		if err := add(path, root, dotly); err != nil {
-			fmt.Fprintf(os.Stderr, "  ✗ %s: %v\n", path, err)
-			failed = append(failed, path)
-			return nil
-		}
-		fmt.Printf("  ✓ %s\n", path)
-		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("walking %s: %w", dirPath, err)
+	rel, err := filepath.Rel(root, dirPath)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		return fmt.Errorf("path %s is not under root %s", dirPath, root)
 	}
-	if len(failed) > 0 {
-		return fmt.Errorf("%d files in %s failed", len(failed), dirPath)
+
+	dest := filepath.Join(dotly, rel)
+	if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
+		return fmt.Errorf("creating dest parent: %w", err)
 	}
+
+	if err := os.Rename(dirPath, dest); err != nil {
+		return fmt.Errorf("moving directory: %w", err)
+	}
+
+	if err := os.Symlink(dest, dirPath); err != nil {
+		_ = os.Rename(dest, dirPath)
+		return fmt.Errorf("creating symlink: %w", err)
+	}
+
+	indexPath := filepath.Join(dotly, IndexFilename)
+	if err := AddToIndex(indexPath, Index{relPath: rel, isDir: true}); err != nil {
+		return fmt.Errorf("updating index: %w", err)
+	}
+
 	return nil
 }
 
@@ -163,7 +142,7 @@ func add(filePath, root, dotly string) error {
 	}
 
 	indexPath := filepath.Join(dotly, IndexFilename)
-	if err := AddToIndex(indexPath, Index{location: absPath, symlink: dest}); err != nil {
+	if err := AddToIndex(indexPath, Index{relPath: rel, isDir: false}); err != nil {
 		return fmt.Errorf("updating index: %w", err)
 	}
 

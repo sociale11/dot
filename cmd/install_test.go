@@ -15,7 +15,7 @@ func TestInstall_RecreatesSymlinks(t *testing.T) {
 	writeFile(t, tracked, "export PATH=/foo")
 
 	original := filepath.Join(root, ".zshrc")
-	idx := Index{location: original, symlink: tracked}
+	idx := Index{relPath: ".zshrc", isDir: false}
 	if err := AddToIndex(filepath.Join(dotly, IndexFilename), idx); err != nil {
 		t.Fatalf("seed index: %v", err)
 	}
@@ -42,7 +42,7 @@ func TestInstall_RefusesToOverwriteRegularFile(t *testing.T) {
 	original := filepath.Join(root, ".zshrc")
 	writeFile(t, original, "user's real file, do not touch")
 
-	idx := Index{location: original, symlink: tracked}
+	idx := Index{relPath: ".zshrc", isDir: false}
 	if err := AddToIndex(filepath.Join(dotly, IndexFilename), idx); err != nil {
 		t.Fatalf("seed: %v", err)
 	}

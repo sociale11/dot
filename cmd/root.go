@@ -35,3 +35,5 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&root, "root", home, "root directory (treated as $HOME)")
 	rootCmd.PersistentFlags().StringVar(&dotly, "dotly", filepath.Join(home, ".local/share/dotly"), "dotly storage directory")
 }
+
+// use rel path

@@ -87,7 +87,6 @@ func TestAdd_NestedFile(t *testing.T) {
 func TestAdd_RejectsPathOutsideRoot(t *testing.T) {
 	root, dotly := setupTest(t)
 
-	// A path clearly outside root.
 	outside := filepath.Join(t.TempDir(), "evil")
 	writeFile(t, outside, "nope")
 
@@ -106,18 +105,16 @@ func TestAdd_RefusesToReAddTrackedFile(t *testing.T) {
 	original := filepath.Join(root, ".zshrc")
 	writeFile(t, original, "important config")
 
-	// First add: should succeed.
 	if err := add(original, root, dotly); err != nil {
 		t.Fatalf("first add: %v", err)
 	}
 
-	// Second add: must fail, and the content must be preserved.
 	err := add(original, root, dotly)
 	if err == nil {
 		t.Fatal("expected re-add to fail, got nil")
 	}
 
-	// Critically: the file content must survive the failed re-add.
+	// Content must survive the failed re-add.
 	got, err := os.ReadFile(original)
 	if err != nil {
 		t.Fatalf("read after failed re-add: %v", err)
@@ -130,7 +127,6 @@ func TestAdd_RefusesToReAddTrackedFile(t *testing.T) {
 func TestAdd_RefusesForeignSymlink(t *testing.T) {
 	root, dotly := setupTest(t)
 
-	// A symlink at original location pointing somewhere outside DOTLY.
 	elsewhere := filepath.Join(t.TempDir(), "elsewhere")
 	writeFile(t, elsewhere, "someone else's file")
 
@@ -144,7 +140,6 @@ func TestAdd_RefusesForeignSymlink(t *testing.T) {
 		t.Fatal("expected add to refuse foreign symlink, got nil")
 	}
 
-	// The foreign symlink must still exist, pointing where it did.
 	target, err := os.Readlink(original)
 	if err != nil {
 		t.Fatalf("readlink: %v", err)
@@ -167,7 +162,6 @@ func TestRestore_RoundTrip(t *testing.T) {
 		t.Fatalf("restore: %v", err)
 	}
 
-	// Should be a regular file again, not a symlink.
 	info, err := os.Lstat(original)
 	if err != nil {
 		t.Fatalf("lstat: %v", err)
@@ -176,7 +170,6 @@ func TestRestore_RoundTrip(t *testing.T) {
 		t.Errorf("expected %s to be a regular file, got symlink", original)
 	}
 
-	// Content preserved.
 	got, err := os.ReadFile(original)
 	if err != nil {
 		t.Fatalf("read: %v", err)
@@ -185,7 +178,6 @@ func TestRestore_RoundTrip(t *testing.T) {
 		t.Errorf("content: got %q, want %q", got, "original content")
 	}
 
-	// Tracked copy should be gone.
 	tracked := filepath.Join(dotly, ".zshrc")
 	if _, err := os.Stat(tracked); !os.IsNotExist(err) {
 		t.Errorf("tracked file should be removed, got err: %v", err)
@@ -195,7 +187,6 @@ func TestRestore_RoundTrip(t *testing.T) {
 func TestRestore_RejectsNonSymlink(t *testing.T) {
 	root, dotly := setupTest(t)
 
-	// A regular file, never added.
 	regular := filepath.Join(root, "regular.txt")
 	writeFile(t, regular, "just a file")
 
@@ -211,7 +202,6 @@ func TestRestore_RejectsNonSymlink(t *testing.T) {
 func TestRestore_RejectsSymlinkToElsewhere(t *testing.T) {
 	root, dotly := setupTest(t)
 
-	// A symlink that points somewhere other than into dotly.
 	original := filepath.Join(root, ".zshrc")
 	elsewhere := filepath.Join(t.TempDir(), "other")
 	writeFile(t, elsewhere, "not ours")
@@ -225,95 +215,89 @@ func TestRestore_RejectsSymlinkToElsewhere(t *testing.T) {
 	}
 }
 
-func TestAdd_DirectoryWithoutRecursiveFails(t *testing.T) {
-	root, dotly := setupTest(t)
+// --- Directory (whole-dir symlink) tests ---
 
-	dir := filepath.Join(root, ".config/nvim")
-	writeFile(t, filepath.Join(dir, "init.lua"), "content")
-
-	err := addPath(dir, root, dotly, false)
-	if err == nil {
-		t.Fatal("expected error for directory without -r")
-	}
-}
-
-func TestAdd_DirectoryRecursive(t *testing.T) {
+func TestAddPath_DirectoryMovesAndSymlinks(t *testing.T) {
 	root, dotly := setupTest(t)
 
 	dir := filepath.Join(root, ".config/nvim")
 	writeFile(t, filepath.Join(dir, "init.lua"), "a")
 	writeFile(t, filepath.Join(dir, "lua/plugins/foo.lua"), "b")
-	writeFile(t, filepath.Join(dir, "lazy-lock.json"), "c")
 
-	if err := addPath(dir, root, dotly, true); err != nil {
-		t.Fatalf("recursive add: %v", err)
+	if err := addPath(dir, root, dotly); err != nil {
+		t.Fatalf("addPath directory: %v", err)
 	}
 
-	// All three files should now be symlinks pointing into DOTLY.
-	for _, rel := range []string{".config/nvim/init.lua", ".config/nvim/lua/plugins/foo.lua", ".config/nvim/lazy-lock.json"} {
-		p := filepath.Join(root, rel)
-		info, err := os.Lstat(p)
-		if err != nil {
-			t.Errorf("%s: lstat: %v", rel, err)
-			continue
-		}
-		if info.Mode()&os.ModeSymlink == 0 {
-			t.Errorf("%s: expected symlink, got %v", rel, info.Mode())
-		}
+	// Original path should be a symlink to dotly.
+	info, err := os.Lstat(dir)
+	if err != nil {
+		t.Fatalf("lstat: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Errorf("expected %s to be a symlink, got mode %v", dir, info.Mode())
+	}
+
+	target, err := os.Readlink(dir)
+	if err != nil {
+		t.Fatalf("readlink: %v", err)
+	}
+	expected := filepath.Join(dotly, ".config/nvim")
+	if target != expected {
+		t.Errorf("symlink target: got %s, want %s", target, expected)
+	}
+
+	// Files should be readable through the symlink.
+	got, err := os.ReadFile(filepath.Join(dir, "init.lua"))
+	if err != nil {
+		t.Fatalf("read through symlink: %v", err)
+	}
+	if string(got) != "a" {
+		t.Errorf("content: got %q, want %q", got, "a")
+	}
+
+	gotNested, err := os.ReadFile(filepath.Join(dir, "lua/plugins/foo.lua"))
+	if err != nil {
+		t.Fatalf("read nested through symlink: %v", err)
+	}
+	if string(gotNested) != "b" {
+		t.Errorf("nested content: got %q, want %q", gotNested, "b")
 	}
 }
 
-func TestAdd_RecursiveSkipsExistingSymlinks(t *testing.T) {
-	// If the tree already contains symlinks (e.g., from a partial previous add),
-	// recursive add should skip them rather than erroring the whole walk.
+func TestAddPath_DirectoryRejectsAlreadyTracked(t *testing.T) {
 	root, dotly := setupTest(t)
 
 	dir := filepath.Join(root, ".config/nvim")
 	writeFile(t, filepath.Join(dir, "init.lua"), "a")
-	writeFile(t, filepath.Join(dir, "plugins.lua"), "b")
 
-	// Pre-track one of the files.
-	if err := add(filepath.Join(dir, "init.lua"), root, dotly); err != nil {
-		t.Fatalf("setup: %v", err)
+	if err := addPath(dir, root, dotly); err != nil {
+		t.Fatalf("first add: %v", err)
 	}
 
-	// Now recursive add on the parent directory should succeed.
-	if err := addPath(dir, root, dotly, true); err != nil {
-		t.Fatalf("recursive add over partially-tracked tree: %v", err)
+	// Second add should fail — it's already a symlink into dotly.
+	err := addPath(dir, root, dotly)
+	if err == nil {
+		t.Fatal("expected re-add to fail, got nil")
+	}
+
+	// Content must still be accessible.
+	got, err := os.ReadFile(filepath.Join(dir, "init.lua"))
+	if err != nil {
+		t.Fatalf("read after failed re-add: %v", err)
+	}
+	if string(got) != "a" {
+		t.Errorf("content: got %q, want %q", got, "a")
 	}
 }
 
-func TestAdd_RecursiveSkipsGitDirectory(t *testing.T) {
+func TestAddPath_DirectoryOutsideRootFails(t *testing.T) {
 	root, dotly := setupTest(t)
 
-	dir := filepath.Join(root, "project")
-	writeFile(t, filepath.Join(dir, "README.md"), "readme")
-	writeFile(t, filepath.Join(dir, ".git/HEAD"), "ref: refs/heads/main")
-	writeFile(t, filepath.Join(dir, ".git/config"), "[core]")
+	outside := filepath.Join(t.TempDir(), "somedir")
+	writeFile(t, filepath.Join(outside, "file.txt"), "nope")
 
-	if err := addPath(dir, root, dotly, true); err != nil {
-		t.Fatalf("add -r: %v", err)
-	}
-
-	// README.md should be tracked.
-	readme := filepath.Join(root, "project/README.md")
-	info, err := os.Lstat(readme)
-	if err != nil || info.Mode()&os.ModeSymlink == 0 {
-		t.Errorf("expected README.md to be a symlink")
-	}
-
-	// .git contents must NOT be tracked.
-	gitHead := filepath.Join(root, "project/.git/HEAD")
-	info, err = os.Lstat(gitHead)
-	if err != nil {
-		t.Fatalf("lstat .git/HEAD: %v", err)
-	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		t.Error(".git/HEAD should not be a symlink")
-	}
-
-	// Tracked copy of .git should not exist in DOTLY either.
-	if _, err := os.Stat(filepath.Join(dotly, "project/.git")); !os.IsNotExist(err) {
-		t.Error("DOTLY should not contain a .git directory")
+	err := addPath(outside, root, dotly)
+	if err == nil {
+		t.Fatal("expected error for directory outside root, got nil")
 	}
 }

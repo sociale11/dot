@@ -65,7 +65,7 @@ func restore(filePath, root, dotly string) error {
 	}
 
 	indexPath := filepath.Join(dotly, IndexFilename)
-	if err := RemoveFromIndex(indexPath, absPath); err != nil {
+	if err := RemoveFromIndex(indexPath, rel); err != nil {
 		return fmt.Errorf("updating index: %w", err)
 	}
 

@@ -12,8 +12,6 @@ func indexPath(t *testing.T) string {
 }
 
 func TestReadIndex_MissingFile(t *testing.T) {
-	// Reading a non-existent index should return an empty slice, not an error.
-	// (Or an error, depending on how you designed it — adjust the assertion.)
 	path := filepath.Join(t.TempDir(), "does-not-exist")
 
 	got, err := ReadIndex(path)
@@ -29,8 +27,9 @@ func TestWriteIndex_ThenReadIndex(t *testing.T) {
 	path := indexPath(t)
 
 	want := []Index{
-		{location: "/home/x/.zshrc", symlink: "/home/x/.local/share/dotly/.zshrc"},
-		{location: "/home/x/.config/nvim/init.lua", symlink: "/home/x/.local/share/dotly/.config/nvim/init.lua"},
+		{relPath: ".zshrc", isDir: false},
+		{relPath: ".config/nvim", isDir: true},
+		{relPath: ".config/git/config", isDir: false},
 	}
 
 	if err := WriteIndex(path, want); err != nil {
@@ -52,6 +51,30 @@ func TestWriteIndex_ThenReadIndex(t *testing.T) {
 	}
 }
 
+func TestWriteIndex_FileFormat(t *testing.T) {
+	// Verify the actual on-disk format is what we expect.
+	path := indexPath(t)
+
+	entries := []Index{
+		{relPath: ".zshrc", isDir: false},
+		{relPath: ".config/nvim", isDir: true},
+	}
+
+	if err := WriteIndex(path, entries); err != nil {
+		t.Fatalf("WriteIndex: %v", err)
+	}
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+
+	expected := ".zshrc\tfile\n.config/nvim\tdir\n"
+	if string(raw) != expected {
+		t.Errorf("file content:\ngot:  %q\nwant: %q", string(raw), expected)
+	}
+}
+
 func TestWriteIndex_EmptySlice(t *testing.T) {
 	path := indexPath(t)
 
@@ -69,11 +92,10 @@ func TestWriteIndex_EmptySlice(t *testing.T) {
 }
 
 func TestWriteIndex_Overwrites(t *testing.T) {
-	// Writing a second time should replace the file, not append.
 	path := indexPath(t)
 
-	first := []Index{{location: "/a", symlink: "/b"}}
-	second := []Index{{location: "/c", symlink: "/d"}}
+	first := []Index{{relPath: ".zshrc", isDir: false}}
+	second := []Index{{relPath: ".bashrc", isDir: false}}
 
 	if err := WriteIndex(path, first); err != nil {
 		t.Fatalf("first write: %v", err)
@@ -94,8 +116,7 @@ func TestWriteIndex_Overwrites(t *testing.T) {
 func TestReadIndex_SkipsBlankLines(t *testing.T) {
 	path := indexPath(t)
 
-	// Manually write a file with blank lines mixed in.
-	content := "/a\t/b\n\n/c\t/d\n\n"
+	content := ".zshrc\tfile\n\n.config/nvim\tdir\n\n"
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
@@ -110,10 +131,26 @@ func TestReadIndex_SkipsBlankLines(t *testing.T) {
 }
 
 func TestReadIndex_SkipsMalformedLines(t *testing.T) {
-	// Lines without a tab separator should be skipped, not crash.
 	path := indexPath(t)
 
-	content := "/a\t/b\nmalformed-line-no-tab\n/c\t/d\n"
+	content := ".zshrc\tfile\nmalformed-no-tab\n.config/nvim\tdir\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	got, err := ReadIndex(path)
+	if err != nil {
+		t.Fatalf("ReadIndex: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 valid entries, got %d: %v", len(got), got)
+	}
+}
+
+func TestReadIndex_SkipsInvalidKind(t *testing.T) {
+	path := indexPath(t)
+
+	content := ".zshrc\tfile\n.bashrc\tgarbage\n.config/nvim\tdir\n"
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
@@ -130,10 +167,10 @@ func TestReadIndex_SkipsMalformedLines(t *testing.T) {
 func TestAddToIndex_AppendsNew(t *testing.T) {
 	path := indexPath(t)
 
-	if err := AddToIndex(path, Index{location: "/a", symlink: "/b"}); err != nil {
+	if err := AddToIndex(path, Index{relPath: ".zshrc", isDir: false}); err != nil {
 		t.Fatalf("AddToIndex: %v", err)
 	}
-	if err := AddToIndex(path, Index{location: "/c", symlink: "/d"}); err != nil {
+	if err := AddToIndex(path, Index{relPath: ".config/nvim", isDir: true}); err != nil {
 		t.Fatalf("AddToIndex: %v", err)
 	}
 
@@ -147,10 +184,9 @@ func TestAddToIndex_AppendsNew(t *testing.T) {
 }
 
 func TestAddToIndex_IsIdempotent(t *testing.T) {
-	// Adding the same location twice should not create a duplicate entry.
 	path := indexPath(t)
 
-	entry := Index{location: "/a", symlink: "/b"}
+	entry := Index{relPath: ".zshrc", isDir: false}
 	if err := AddToIndex(path, entry); err != nil {
 		t.Fatalf("first add: %v", err)
 	}
@@ -167,14 +203,15 @@ func TestAddToIndex_IsIdempotent(t *testing.T) {
 	}
 }
 
-func TestAddToIndex_ReplacesOnSameLocation(t *testing.T) {
-	// Adding the same location with a different symlink should replace, not duplicate.
+func TestAddToIndex_ReplacesOnSamePath(t *testing.T) {
+	// If something was tracked as file then re-added as dir (unlikely but
+	// defensively correct), the kind should update.
 	path := indexPath(t)
 
-	if err := AddToIndex(path, Index{location: "/a", symlink: "/old"}); err != nil {
+	if err := AddToIndex(path, Index{relPath: ".config/nvim", isDir: false}); err != nil {
 		t.Fatalf("first add: %v", err)
 	}
-	if err := AddToIndex(path, Index{location: "/a", symlink: "/new"}); err != nil {
+	if err := AddToIndex(path, Index{relPath: ".config/nvim", isDir: true}); err != nil {
 		t.Fatalf("second add: %v", err)
 	}
 
@@ -185,7 +222,53 @@ func TestAddToIndex_ReplacesOnSameLocation(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("expected 1 entry, got %d", len(got))
 	}
-	if got[0].symlink != "/new" {
-		t.Errorf("expected symlink /new, got %s", got[0].symlink)
+	if !got[0].isDir {
+		t.Errorf("expected isDir=true after replacement, got false")
+	}
+}
+
+func TestRemoveFromIndex(t *testing.T) {
+	path := indexPath(t)
+
+	if err := AddToIndex(path, Index{relPath: ".zshrc", isDir: false}); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	if err := AddToIndex(path, Index{relPath: ".config/nvim", isDir: true}); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+
+	if err := RemoveFromIndex(path, ".zshrc"); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+
+	got, err := ReadIndex(path)
+	if err != nil {
+		t.Fatalf("ReadIndex: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(got))
+	}
+	if got[0].relPath != ".config/nvim" {
+		t.Errorf("wrong entry survived: got %s", got[0].relPath)
+	}
+}
+
+func TestRemoveFromIndex_AbsentIsNoOp(t *testing.T) {
+	path := indexPath(t)
+
+	if err := AddToIndex(path, Index{relPath: ".zshrc", isDir: false}); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+
+	if err := RemoveFromIndex(path, ".nonexistent"); err != nil {
+		t.Fatalf("remove absent: %v", err)
+	}
+
+	got, err := ReadIndex(path)
+	if err != nil {
+		t.Fatalf("ReadIndex: %v", err)
+	}
+	if len(got) != 1 {
+		t.Errorf("expected 1 entry unchanged, got %d", len(got))
 	}
 }

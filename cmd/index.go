@@ -7,8 +7,8 @@ import (
 )
 
 type Index struct {
-	location string // location of the tracked file
-	symlink  string // location of the symlink
+	relPath string // relative to root, e.g. ".config/nvim" or ".zshrc"
+	isDir   bool   // true if this is a directory-level symlink
 }
 
 const IndexFilename = "dotly.index"
@@ -24,10 +24,15 @@ func InitIndex(path string) error {
 }
 
 // WriteIndex replaces the index file at path with the given entries.
+// Format: relPath\tfile|dir
 func WriteIndex(path string, indexes []Index) error {
 	var sb strings.Builder
 	for _, idx := range indexes {
-		fmt.Fprintf(&sb, "%s\t%s\n", idx.location, idx.symlink)
+		kind := "file"
+		if idx.isDir {
+			kind = "dir"
+		}
+		fmt.Fprintf(&sb, "%s\t%s\n", idx.relPath, kind)
 	}
 	if err := os.WriteFile(path, []byte(sb.String()), 0644); err != nil {
 		return fmt.Errorf("writing index to %s: %w", path, err)
@@ -56,16 +61,20 @@ func ReadIndex(path string) ([]Index, error) {
 		if len(parts) != 2 {
 			continue
 		}
+		kind := parts[1]
+		if kind != "file" && kind != "dir" {
+			continue
+		}
 		indexes = append(indexes, Index{
-			location: parts[0],
-			symlink:  parts[1],
+			relPath: parts[0],
+			isDir:   kind == "dir",
 		})
 	}
 	return indexes, nil
 }
 
 // AddToIndex adds or replaces an entry in the index. If an entry with the
-// same location already exists, it's updated in place. Otherwise the new
+// same relPath already exists, it's updated in place. Otherwise the new
 // entry is appended.
 func AddToIndex(path string, idx Index) error {
 	existing, err := ReadIndex(path)
@@ -75,7 +84,7 @@ func AddToIndex(path string, idx Index) error {
 
 	found := false
 	for i, e := range existing {
-		if e.location == idx.location {
+		if e.relPath == idx.relPath {
 			existing[i] = idx
 			found = true
 			break
@@ -88,18 +97,18 @@ func AddToIndex(path string, idx Index) error {
 	return WriteIndex(path, existing)
 }
 
-// RemoveFromIndex removes the entry for the given location. Returns nil if
-// the location wasn't in the index — removing something already absent is
+// RemoveFromIndex removes the entry for the given relPath. Returns nil if
+// the path wasn't in the index — removing something already absent is
 // not an error.
-func RemoveFromIndex(path, location string) error {
+func RemoveFromIndex(path, relPath string) error {
 	existing, err := ReadIndex(path)
 	if err != nil {
 		return err
 	}
 
-	filtered := existing[:0] // reuse underlying array
+	filtered := existing[:0]
 	for _, e := range existing {
-		if e.location != location {
+		if e.relPath != relPath {
 			filtered = append(filtered, e)
 		}
 	}
