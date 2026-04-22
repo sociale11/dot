@@ -1,4 +1,4 @@
-module dotly
+module dot
 
 go 1.25.3
 

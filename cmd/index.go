@@ -11,7 +11,7 @@ type Index struct {
 	isDir   bool   // true if this is a directory-level symlink
 }
 
-const IndexFilename = "dotly.index"
+const IndexFilename = "dot.index"
 
 // InitIndex creates an empty index file at the given path if it doesn't exist.
 // Safe to call repeatedly.

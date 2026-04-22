@@ -9,14 +9,14 @@ import (
 )
 
 var (
-	root  string // defaults to $HOME
-	dotly string // defaults to $HOME/.local/share/dotly
+	root string // defaults to $HOME
+	dot  string // defaults to $HOME/.local/share/dot
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "dotly",
+	Use:   "dot",
 	Short: "A minimal dotfile manager",
-	Long:  "dotly tracks dotfiles by moving them into a central directory and symlinking them back.",
+	Long:  "dot tracks dotfiles by moving them into a central directory and symlinking them back.",
 }
 
 func Execute() {
@@ -33,7 +33,7 @@ func init() {
 	}
 
 	rootCmd.PersistentFlags().StringVar(&root, "root", home, "root directory (treated as $HOME)")
-	rootCmd.PersistentFlags().StringVar(&dotly, "dotly", filepath.Join(home, ".local/share/dotly"), "dotly storage directory")
+	rootCmd.PersistentFlags().StringVar(&dot, "dot", filepath.Join(home, ".local/share/dot"), "dot storage directory")
 }
 
 // use rel path

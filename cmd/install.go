@@ -12,7 +12,7 @@ var installCmd = &cobra.Command{
 	Use:   "install",
 	Short: "Recreate all symlinks from the index",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return install(root, dotly)
+		return install(root, dot)
 	},
 }
 
@@ -20,8 +20,8 @@ func init() {
 	rootCmd.AddCommand(installCmd)
 }
 
-func install(root, dotly string) error {
-	indexPath := filepath.Join(dotly, IndexFilename)
+func install(root, dot string) error {
+	indexPath := filepath.Join(dot, IndexFilename)
 	entries, err := ReadIndex(indexPath)
 	if err != nil {
 		return fmt.Errorf("reading index: %w", err)
@@ -34,7 +34,7 @@ func install(root, dotly string) error {
 
 	var failed []string
 	for _, e := range entries {
-		if err := installOne(e, root, dotly); err != nil {
+		if err := installOne(e, root, dot); err != nil {
 			fmt.Fprintf(os.Stderr, "  ✗ %s: %v\n", e.relPath, err)
 			failed = append(failed, e.relPath)
 			continue
@@ -48,11 +48,11 @@ func install(root, dotly string) error {
 	return nil
 }
 
-func installOne(e Index, root, dotly string) error {
-	source := filepath.Join(dotly, e.relPath)
+func installOne(e Index, root, dot string) error {
+	source := filepath.Join(dot, e.relPath)
 	target := filepath.Join(root, e.relPath)
 
-	// Tracked file/dir must exist in dotly.
+	// Tracked file/dir must exist in dot.
 	if _, err := os.Stat(source); err != nil {
 		return fmt.Errorf("tracked entry missing: %w", err)
 	}

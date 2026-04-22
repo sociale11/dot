@@ -7,15 +7,15 @@ import (
 	"testing"
 )
 
-// setupTest creates a fake root and dotly dir, returns their paths.
-func setupTest(t *testing.T) (root, dotly string) {
+// setupTest creates a fake root and dot dir, returns their paths.
+func setupTest(t *testing.T) (root, dot string) {
 	t.Helper()
 	root = t.TempDir()
-	dotly = filepath.Join(root, ".local/share/dotly")
-	if err := os.MkdirAll(dotly, 0755); err != nil {
+	dot = filepath.Join(root, ".local/share/dot")
+	if err := os.MkdirAll(dot, 0755); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
-	return root, dotly
+	return root, dot
 }
 
 // writeFile is a test helper for creating files with content.
@@ -30,12 +30,12 @@ func writeFile(t *testing.T, path, content string) {
 }
 
 func TestAdd_SimpleFile(t *testing.T) {
-	root, dotly := setupTest(t)
+	root, dot := setupTest(t)
 
 	original := filepath.Join(root, ".zshrc")
 	writeFile(t, original, "export PATH=/foo")
 
-	if err := add(original, root, dotly); err != nil {
+	if err := add(original, root, dot); err != nil {
 		t.Fatalf("add failed: %v", err)
 	}
 
@@ -48,12 +48,12 @@ func TestAdd_SimpleFile(t *testing.T) {
 		t.Errorf("expected %s to be a symlink, got mode %v", original, info.Mode())
 	}
 
-	// Symlink should point into dotly.
+	// Symlink should point into dot.
 	target, err := os.Readlink(original)
 	if err != nil {
 		t.Fatalf("readlink: %v", err)
 	}
-	expected := filepath.Join(dotly, ".zshrc")
+	expected := filepath.Join(dot, ".zshrc")
 	if target != expected {
 		t.Errorf("symlink target: got %s, want %s", target, expected)
 	}
@@ -69,28 +69,28 @@ func TestAdd_SimpleFile(t *testing.T) {
 }
 
 func TestAdd_NestedFile(t *testing.T) {
-	root, dotly := setupTest(t)
+	root, dot := setupTest(t)
 
 	original := filepath.Join(root, ".config/nvim/init.lua")
 	writeFile(t, original, "vim.opt.number = true")
 
-	if err := add(original, root, dotly); err != nil {
+	if err := add(original, root, dot); err != nil {
 		t.Fatalf("add failed: %v", err)
 	}
 
-	tracked := filepath.Join(dotly, ".config/nvim/init.lua")
+	tracked := filepath.Join(dot, ".config/nvim/init.lua")
 	if _, err := os.Stat(tracked); err != nil {
 		t.Errorf("tracked file not created: %v", err)
 	}
 }
 
 func TestAdd_RejectsPathOutsideRoot(t *testing.T) {
-	root, dotly := setupTest(t)
+	root, dot := setupTest(t)
 
 	outside := filepath.Join(t.TempDir(), "evil")
 	writeFile(t, outside, "nope")
 
-	err := add(outside, root, dotly)
+	err := add(outside, root, dot)
 	if err == nil {
 		t.Fatal("expected error for path outside root, got nil")
 	}
@@ -100,16 +100,16 @@ func TestAdd_RejectsPathOutsideRoot(t *testing.T) {
 }
 
 func TestAdd_RefusesToReAddTrackedFile(t *testing.T) {
-	root, dotly := setupTest(t)
+	root, dot := setupTest(t)
 
 	original := filepath.Join(root, ".zshrc")
 	writeFile(t, original, "important config")
 
-	if err := add(original, root, dotly); err != nil {
+	if err := add(original, root, dot); err != nil {
 		t.Fatalf("first add: %v", err)
 	}
 
-	err := add(original, root, dotly)
+	err := add(original, root, dot)
 	if err == nil {
 		t.Fatal("expected re-add to fail, got nil")
 	}
@@ -125,7 +125,7 @@ func TestAdd_RefusesToReAddTrackedFile(t *testing.T) {
 }
 
 func TestAdd_RefusesForeignSymlink(t *testing.T) {
-	root, dotly := setupTest(t)
+	root, dot := setupTest(t)
 
 	elsewhere := filepath.Join(t.TempDir(), "elsewhere")
 	writeFile(t, elsewhere, "someone else's file")
@@ -135,7 +135,7 @@ func TestAdd_RefusesForeignSymlink(t *testing.T) {
 		t.Fatalf("setup symlink: %v", err)
 	}
 
-	err := add(original, root, dotly)
+	err := add(original, root, dot)
 	if err == nil {
 		t.Fatal("expected add to refuse foreign symlink, got nil")
 	}
@@ -150,15 +150,15 @@ func TestAdd_RefusesForeignSymlink(t *testing.T) {
 }
 
 func TestRestore_RoundTrip(t *testing.T) {
-	root, dotly := setupTest(t)
+	root, dot := setupTest(t)
 
 	original := filepath.Join(root, ".zshrc")
 	writeFile(t, original, "original content")
 
-	if err := add(original, root, dotly); err != nil {
+	if err := add(original, root, dot); err != nil {
 		t.Fatalf("add: %v", err)
 	}
-	if err := restore(original, root, dotly); err != nil {
+	if err := restore(original, root, dot); err != nil {
 		t.Fatalf("restore: %v", err)
 	}
 
@@ -178,19 +178,19 @@ func TestRestore_RoundTrip(t *testing.T) {
 		t.Errorf("content: got %q, want %q", got, "original content")
 	}
 
-	tracked := filepath.Join(dotly, ".zshrc")
+	tracked := filepath.Join(dot, ".zshrc")
 	if _, err := os.Stat(tracked); !os.IsNotExist(err) {
 		t.Errorf("tracked file should be removed, got err: %v", err)
 	}
 }
 
 func TestRestore_RejectsNonSymlink(t *testing.T) {
-	root, dotly := setupTest(t)
+	root, dot := setupTest(t)
 
 	regular := filepath.Join(root, "regular.txt")
 	writeFile(t, regular, "just a file")
 
-	err := restore(regular, root, dotly)
+	err := restore(regular, root, dot)
 	if err == nil {
 		t.Fatal("expected error for non-symlink, got nil")
 	}
@@ -200,7 +200,7 @@ func TestRestore_RejectsNonSymlink(t *testing.T) {
 }
 
 func TestRestore_RejectsSymlinkToElsewhere(t *testing.T) {
-	root, dotly := setupTest(t)
+	root, dot := setupTest(t)
 
 	original := filepath.Join(root, ".zshrc")
 	elsewhere := filepath.Join(t.TempDir(), "other")
@@ -209,7 +209,7 @@ func TestRestore_RejectsSymlinkToElsewhere(t *testing.T) {
 		t.Fatalf("setup symlink: %v", err)
 	}
 
-	err := restore(original, root, dotly)
+	err := restore(original, root, dot)
 	if err == nil {
 		t.Fatal("expected error for foreign symlink, got nil")
 	}
@@ -218,17 +218,17 @@ func TestRestore_RejectsSymlinkToElsewhere(t *testing.T) {
 // --- Directory (whole-dir symlink) tests ---
 
 func TestAddPath_DirectoryMovesAndSymlinks(t *testing.T) {
-	root, dotly := setupTest(t)
+	root, dot := setupTest(t)
 
 	dir := filepath.Join(root, ".config/nvim")
 	writeFile(t, filepath.Join(dir, "init.lua"), "a")
 	writeFile(t, filepath.Join(dir, "lua/plugins/foo.lua"), "b")
 
-	if err := addPath(dir, root, dotly); err != nil {
+	if err := addPath(dir, root, dot); err != nil {
 		t.Fatalf("addPath directory: %v", err)
 	}
 
-	// Original path should be a symlink to dotly.
+	// Original path should be a symlink to dot.
 	info, err := os.Lstat(dir)
 	if err != nil {
 		t.Fatalf("lstat: %v", err)
@@ -241,7 +241,7 @@ func TestAddPath_DirectoryMovesAndSymlinks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("readlink: %v", err)
 	}
-	expected := filepath.Join(dotly, ".config/nvim")
+	expected := filepath.Join(dot, ".config/nvim")
 	if target != expected {
 		t.Errorf("symlink target: got %s, want %s", target, expected)
 	}
@@ -265,17 +265,17 @@ func TestAddPath_DirectoryMovesAndSymlinks(t *testing.T) {
 }
 
 func TestAddPath_DirectoryRejectsAlreadyTracked(t *testing.T) {
-	root, dotly := setupTest(t)
+	root, dot := setupTest(t)
 
 	dir := filepath.Join(root, ".config/nvim")
 	writeFile(t, filepath.Join(dir, "init.lua"), "a")
 
-	if err := addPath(dir, root, dotly); err != nil {
+	if err := addPath(dir, root, dot); err != nil {
 		t.Fatalf("first add: %v", err)
 	}
 
-	// Second add should fail — it's already a symlink into dotly.
-	err := addPath(dir, root, dotly)
+	// Second add should fail — it's already a symlink into dot.
+	err := addPath(dir, root, dot)
 	if err == nil {
 		t.Fatal("expected re-add to fail, got nil")
 	}
@@ -291,12 +291,12 @@ func TestAddPath_DirectoryRejectsAlreadyTracked(t *testing.T) {
 }
 
 func TestAddPath_DirectoryOutsideRootFails(t *testing.T) {
-	root, dotly := setupTest(t)
+	root, dot := setupTest(t)
 
 	outside := filepath.Join(t.TempDir(), "somedir")
 	writeFile(t, filepath.Join(outside, "file.txt"), "nope")
 
-	err := addPath(outside, root, dotly)
+	err := addPath(outside, root, dot)
 	if err == nil {
 		t.Fatal("expected error for directory outside root, got nil")
 	}

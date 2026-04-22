@@ -1,7 +1,7 @@
 package main
 
 import (
-	"dotly/cmd"
+	"dot/cmd"
 )
 
 func main() {

@@ -8,7 +8,7 @@ import (
 
 func indexPath(t *testing.T) string {
 	t.Helper()
-	return filepath.Join(t.TempDir(), "dotly.index")
+	return filepath.Join(t.TempDir(), "dot.index")
 }
 
 func TestReadIndex_MissingFile(t *testing.T) {

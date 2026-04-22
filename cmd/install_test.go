@@ -7,20 +7,20 @@ import (
 )
 
 func TestInstall_RecreatesSymlinks(t *testing.T) {
-	root, dotly := setupTest(t)
+	root, dot := setupTest(t)
 
-	// Simulate a cloned DOTLY: tracked file exists, index has the entry,
+	// Simulate a cloned dot: tracked file exists, index has the entry,
 	// but the symlink at the original location is missing.
-	tracked := filepath.Join(dotly, ".zshrc")
+	tracked := filepath.Join(dot, ".zshrc")
 	writeFile(t, tracked, "export PATH=/foo")
 
 	original := filepath.Join(root, ".zshrc")
 	idx := Index{relPath: ".zshrc", isDir: false}
-	if err := AddToIndex(filepath.Join(dotly, IndexFilename), idx); err != nil {
+	if err := AddToIndex(filepath.Join(dot, IndexFilename), idx); err != nil {
 		t.Fatalf("seed index: %v", err)
 	}
 
-	if err := install(root, dotly); err != nil {
+	if err := install(root, dot); err != nil {
 		t.Fatalf("install: %v", err)
 	}
 
@@ -34,20 +34,20 @@ func TestInstall_RecreatesSymlinks(t *testing.T) {
 }
 
 func TestInstall_RefusesToOverwriteRegularFile(t *testing.T) {
-	root, dotly := setupTest(t)
+	root, dot := setupTest(t)
 
-	tracked := filepath.Join(dotly, ".zshrc")
+	tracked := filepath.Join(dot, ".zshrc")
 	writeFile(t, tracked, "tracked content")
 
 	original := filepath.Join(root, ".zshrc")
 	writeFile(t, original, "user's real file, do not touch")
 
 	idx := Index{relPath: ".zshrc", isDir: false}
-	if err := AddToIndex(filepath.Join(dotly, IndexFilename), idx); err != nil {
+	if err := AddToIndex(filepath.Join(dot, IndexFilename), idx); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 
-	err := install(root, dotly)
+	err := install(root, dot)
 	if err == nil {
 		t.Fatal("expected install to fail when real file blocks symlink")
 	}

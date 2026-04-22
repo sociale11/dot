@@ -30,7 +30,7 @@ var addCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var failed []string
 		for _, arg := range args {
-			if err := addPath(arg, root, dotly); err != nil {
+			if err := addPath(arg, root, dot); err != nil {
 				fmt.Fprintf(os.Stderr, "  ✗ %s: %v\n", arg, err)
 				failed = append(failed, arg)
 				continue
