@@ -10,19 +10,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var recursive bool
-
-var defaultIgnores = []string{
-	".git",
-	".svn",
-	".hg",
-	".DS_Store",
-	"node_modules",
-	"__pycache__",
-	".venv",
-	".mypy_cache",
-}
-
 var addCmd = &cobra.Command{
 	Use:   "add <path>...",
 	Short: "Track one or more files",
@@ -170,19 +157,4 @@ func copyFile(src, dst string) error {
 		return fmt.Errorf("finalizing destination: %w", err)
 	}
 	return nil
-}
-
-func shouldIgnore(name string) bool {
-	for _, pattern := range defaultIgnores {
-		if name == pattern {
-			return true
-		}
-		if matched, _ := filepath.Match(pattern, name); matched {
-			return true
-		}
-	}
-	if strings.HasSuffix(name, "~") || strings.HasSuffix(name, ".swp") || strings.HasSuffix(name, ".swo") {
-		return true
-	}
-	return false
 }
