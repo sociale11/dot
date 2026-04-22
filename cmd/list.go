@@ -27,7 +27,11 @@ func list(root, dot string) error {
 	}
 
 	for _, e := range entries {
-		fmt.Printf("%s\t%t\n", e.relPath, e.isDir)
+		_type := "file"
+		if e.isDir {
+			_type = "directory"
+		}
+		fmt.Printf("%s\t%s\n", e.relPath, _type)
 	}
 	return nil
 }
