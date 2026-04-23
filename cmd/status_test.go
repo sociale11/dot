@@ -98,7 +98,9 @@ func TestStatus_SymlinkPointsWrong(t *testing.T) {
 	os.Remove(file)
 	elsewhere := filepath.Join(t.TempDir(), "wrong")
 	writeFile(t, elsewhere, "wrong target")
-	os.Symlink(elsewhere, file)
+	if err := os.Symlink(elsewhere, file); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
 
 	results, err := statusCheck(root, dotly)
 	if err != nil {

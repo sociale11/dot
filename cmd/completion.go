@@ -34,3 +34,7 @@ Usage:
 		}
 	},
 }
+
+func init() {
+	rootCmd.AddCommand(completionCmd)
+}
