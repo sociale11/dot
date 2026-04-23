@@ -1,8 +1,16 @@
 # dot
 
-A minimal dotfile tracker. No copying, no templating, no sync commands — just symlinks and git.
+A simple, opinionated dotfile manager.
 
-You edit your config files normally. `dot` moves them into a central repo and symlinks them back. Changes flow through the symlinks transparently. Your repo stays in sync because it *is* the source of truth.
+## Why?
+I want a simple way of managing my dotfiles. 
+
+Popular options:
+
+- `stow` simple, but requires a lot of manual work
+- `chezmoi` powerful, but requires changing workflow and adding new steps and complexity
+
+**dot** allows you to manage your dotfiles in a central repo, and symlink them back to your original locations.
 
 ## How it works
 
@@ -16,6 +24,8 @@ dot install               # on a new machine, recreates all symlinks from the in
 When you add a file or directory, `dot` moves it into `~/.local/share/dot/`, creates a symlink at the original location, and records the entry in a portable index. The index stores paths relative to `$HOME`, so it works across machines with different usernames.
 
 Directories are symlinked as a unit by default — one symlink for `~/.config/nvim`, not one per file inside it.
+
+Track your dotfiles at `~/.local/share/dot/` with git normally. For nested repos, e.g. `~/.config/nvim`, you can use submodules if you want.
 
 ## Install
 
