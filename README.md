@@ -1,6 +1,6 @@
 # dot
 
-A simple, opinionated dotfile manager.
+A simple, opinionated dotfiles manager.
 
 ## Why?
 I want a simple way of managing my dotfiles. 
