@@ -30,10 +30,21 @@ Track your dotfiles at `~/.local/share/dot/` with git normally.
 
 ## Install
 
+**Arch Linux (AUR):**
+```bash
+yay -S dot-dotfiles
+```
+
+**From source:**
 ```bash
 git clone https://github.com/sociale11/dot.git
 cd dot
 go build -o dot .
+```
+
+**With Go:**
+```bash
+go install github.com/sociale11/dot@latest
 ```
 
 ## Quick start
