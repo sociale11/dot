@@ -1,7 +1,7 @@
 package main
 
 import (
-	"dot/cmd"
+	"github.com/sociale11/dot/cmd"
 )
 
 func main() {

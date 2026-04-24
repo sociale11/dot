@@ -1,4 +1,4 @@
-module dot
+module github.com/sociale11/dot
 
 go 1.24
 
