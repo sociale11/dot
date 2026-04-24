@@ -3,7 +3,8 @@
 A simple, opinionated dotfiles manager.
 
 ## Why?
-I want a simple way of managing my dotfiles. 
+
+I want a simple way of managing my dotfiles.
 
 Popular options:
 
@@ -25,15 +26,9 @@ When you add a file or directory, `dot` moves it into `~/.local/share/dot/`, cre
 
 Directories are symlinked as a unit by default — one symlink for `~/.config/nvim`, not one per file inside it.
 
-Track your dotfiles at `~/.local/share/dot/` with git normally. For nested repos, e.g. `~/.config/nvim`, you can use submodules if you want.
+Track your dotfiles at `~/.local/share/dot/` with git normally.
 
 ## Install
-
-```bash
-go install github.com/sociale11/dot@latest
-```
-
-Or build from source:
 
 ```bash
 git clone https://github.com/sociale11/dot.git
@@ -53,16 +48,20 @@ dot add ~/.config/nvim
 dot add ~/.config/git/config
 
 # Check what's tracked
+dot list
+
+# Check symlink health
 dot status
 
 # Push your dotfiles
 cd ~/.local/share/dot
-git remote add origin git@github.com:sociale11/dotfiles.git
+git remote add origin git@github.com:<your-username>/dotfiles.git
 git push -u origin main
 
 # On a new machine
-git clone git@github.com:sociale11/dotfiles.git ~/.local/share/dot
-dot install
+dot clone git@github.com:<your-username>/dotfiles.git
+# or with conflicts
+dot clone git@github.com:<your-username>/dotfiles.git --overwrite
 ```
 
 ## Commands
@@ -73,7 +72,11 @@ dot install
 | `dot add <path>...` | Moves files/directories into the repo and symlinks them back |
 | `dot restore <path>` | Stops tracking, moves the file back to its original location |
 | `dot install` | Reads the index and creates symlinks (for bootstrapping a new machine) |
-| `dot status` | Shows tracked entries and their health |
+| `dot install --overwrite` | Backs up conflicting files to `backups/` and replaces them |
+| `dot clone <url>` | Clones a dotfiles repo into `~/.local/share/dot` and runs install |
+| `dot list` | Prints all tracked entries from the index |
+| `dot status` | Shows tracked entries and reports broken or replaced symlinks |
+| `dot completion install` | Detects your shell and installs completions |
 
 ## Flags
 
@@ -81,7 +84,6 @@ dot install
 |------|-------------|
 | `--root` | Override the root directory (default: `$HOME`) |
 | `--dot` | Override the storage directory (default: `~/.local/share/dot`) |
-| `--no-commit` | Skip the auto git commit after add/restore |
 
 ## Design decisions
 
@@ -91,16 +93,7 @@ dot install
 
 **Portable index.** Paths are stored relative to `$HOME`. The index doesn't contain `/home/alice/...` — it contains `.config/nvim`. Works on any machine.
 
-**Auto-commit.** Each `add` and `restore` creates a git commit. Skip with `--no-commit` if you want to batch changes.
-
-## Auto-sync edits
-
-When you edit a tracked file, the change lands in the dot repo through the symlink — but nothing commits it. A cron job handles this:
-
-```bash
-# Add to your crontab: crontab -e
-*/5 * * * * cd ~/.local/share/dot && git add -A && git diff --cached --quiet || git commit -m "auto: $(date +\%Y-\%m-\%d\ \%H:\%M)"
-```
+**Conflict handling.** `dot install --overwrite` backs up existing files to `backups/` within the dot repo (gitignored) before replacing them. Without `--overwrite`, conflicts are reported and skipped.
 
 ## Known tradeoffs
 
@@ -115,19 +108,28 @@ When you edit a tracked file, the change lands in the dot repo through the symli
 ```
 dot/
 ├── cmd/
-│   ├── root.go          # cobra root command, global flags
-│   ├── init.go          # dot init
-│   ├── add.go           # dot add
-│   ├── restore.go       # dot restore
-│   ├── install.go       # dot install
-│   ├── index.go         # index read/write logic
+│   ├── root.go
+│   ├── init.go
+│   ├── add.go
+│   ├── restore.go
+│   ├── install.go
+│   ├── clone.go
+│   ├── status.go
+│   ├── list.go
+│   ├── completion.go
+│   ├── index.go
 │   ├── add_test.go
-│   └── index_test.go
+│   ├── index_test.go
+│   ├── install_test.go
+│   ├── clone_test.go
+│   ├── restore_test.go
+│   └── status_test.go
 ├── main.go
 ├── go.mod
 ├── go.sum
 ├── LICENSE
-└── README.md
+├── README.md
+└── ROADMAP.md
 ```
 
 ## Contributing
@@ -141,3 +143,4 @@ go test ./...
 ## License
 
 MIT
+
