@@ -64,6 +64,22 @@ dot clone git@github.com:<your-username>/dotfiles.git
 dot clone git@github.com:<your-username>/dotfiles.git --overwrite
 ```
 
+## Multiple machines
+ 
+The easiest way to manage multiple machines is with git branches. After running `dot clone` on a new machine, branch off and apply any machine-specific changes (e.g. hardware config, monitor layout):
+ 
+```bash
+cd ~/.local/share/dot
+git checkout -b desktop
+# make your changes, commit normally
+```
+ 
+If you ever need to reinstall on that machine (e.g. after a disk wipe):
+ 
+```bash
+dot clone -b desktop git@github.com:<your-username>/dotfiles.git
+```
+
 ## Commands
 
 | Command | Description |

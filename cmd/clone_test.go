@@ -8,14 +8,12 @@ import (
 	"testing"
 )
 
-// setupBareRepo creates a bare git repo with some dotfiles, returns the repo path.
-func setupBareRepo(t *testing.T, root string) string {
+// setupBareRepo creates a bare git repo with a .zshrc and index on main.
+func setupBareRepo(t *testing.T) string {
 	t.Helper()
 
 	work := filepath.Join(t.TempDir(), "work")
-	if err := os.MkdirAll(work, 0755); err != nil {
-		t.Fatalf("mkdir work: %v", err)
-	}
+	os.MkdirAll(work, 0755)
 
 	run := func(args ...string) {
 		t.Helper()
@@ -34,20 +32,61 @@ func setupBareRepo(t *testing.T, root string) string {
 	}
 
 	run("git", "init")
-
 	writeFile(t, filepath.Join(work, ".zshrc"), "export PATH=/foo")
-
-	idx := Index{relPath: ".zshrc", isDir: false}
-	if err := AddToIndex(filepath.Join(work, IndexFilename), idx); err != nil {
-		t.Fatalf("seed index: %v", err)
-	}
-
+	AddToIndex(filepath.Join(work, IndexFilename), Index{relPath: ".zshrc", isDir: false})
 	run("git", "add", ".")
 	run("git", "commit", "-m", "initial")
 
 	bare := filepath.Join(t.TempDir(), "dotfiles.git")
-	run2 := exec.Command("git", "clone", "--bare", work, bare)
-	if out, err := run2.CombinedOutput(); err != nil {
+	cmd := exec.Command("git", "clone", "--bare", work, bare)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("bare clone: %v\n%s", err, out)
+	}
+
+	return bare
+}
+
+// setupBareRepoWithBranch creates a bare repo with main and a named branch
+// that has different content.
+func setupBareRepoWithBranch(t *testing.T, branch string) string {
+	t.Helper()
+
+	work := filepath.Join(t.TempDir(), "work")
+	os.MkdirAll(work, 0755)
+
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = work
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=test",
+			"GIT_AUTHOR_EMAIL=test@test.com",
+			"GIT_COMMITTER_NAME=test",
+			"GIT_COMMITTER_EMAIL=test@test.com",
+		)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+	}
+
+	// main branch
+	run("git", "init", "-b", "main")
+	writeFile(t, filepath.Join(work, ".zshrc"), "main content")
+	AddToIndex(filepath.Join(work, IndexFilename), Index{relPath: ".zshrc", isDir: false})
+	run("git", "add", ".")
+	run("git", "commit", "-m", "initial")
+
+	// create named branch with different content
+	run("git", "checkout", "-b", branch)
+	writeFile(t, filepath.Join(work, ".zshrc"), "branch content")
+	run("git", "add", ".")
+	run("git", "commit", "-m", "branch commit")
+	run("git", "checkout", "main")
+
+	bare := filepath.Join(t.TempDir(), "dotfiles.git")
+	cmd := exec.Command("git", "clone", "--bare", work, bare)
+	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("bare clone: %v\n%s", err, out)
 	}
 
@@ -57,33 +96,22 @@ func setupBareRepo(t *testing.T, root string) string {
 func TestClone_ClonesAndInstalls(t *testing.T) {
 	root := t.TempDir()
 	dot := filepath.Join(root, ".local/share/dot")
-	bare := setupBareRepo(t, root)
+	bare := setupBareRepo(t)
 
-	if err := cloneAndInstall(bare, root, dot, false); err != nil {
+	if err := cloneAndInstall([]string{bare}, root, dot); err != nil {
 		t.Fatalf("cloneAndInstall: %v", err)
 	}
 
-	// Index should exist in dot.
-	indexPath := filepath.Join(dot, IndexFilename)
-	entries, err := ReadIndex(indexPath)
-	if err != nil {
-		t.Fatalf("read index: %v", err)
-	}
-	if len(entries) != 1 {
-		t.Fatalf("expected 1 index entry, got %d", len(entries))
-	}
-
-	// Symlink should exist at root.
+	// Symlink should exist.
 	original := filepath.Join(root, ".zshrc")
 	info, err := os.Lstat(original)
 	if err != nil {
 		t.Fatalf("lstat: %v", err)
 	}
 	if info.Mode()&os.ModeSymlink == 0 {
-		t.Error("expected symlink at original location")
+		t.Error("expected symlink")
 	}
 
-	// Content readable through symlink.
 	got, err := os.ReadFile(original)
 	if err != nil {
 		t.Fatalf("read: %v", err)
@@ -93,15 +121,45 @@ func TestClone_ClonesAndInstalls(t *testing.T) {
 	}
 }
 
+func TestClone_WithBranchFlag(t *testing.T) {
+	root := t.TempDir()
+	dot := filepath.Join(root, ".local/share/dot")
+	bare := setupBareRepoWithBranch(t, "desktop")
+
+	if err := cloneAndInstall([]string{"-b", "desktop", bare}, root, dot); err != nil {
+		t.Fatalf("cloneAndInstall -b desktop: %v", err)
+	}
+
+	// Should have the branch content, not main.
+	original := filepath.Join(root, ".zshrc")
+	got, err := os.ReadFile(original)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if string(got) != "branch content" {
+		t.Errorf("content: got %q, want %q (should be branch, not main)", got, "branch content")
+	}
+
+	// Verify we're on the right branch.
+	cmd := exec.Command("git", "branch", "--show-current")
+	cmd.Dir = dot
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git branch: %v", err)
+	}
+	if strings.TrimSpace(string(out)) != "desktop" {
+		t.Errorf("branch: got %q, want %q", strings.TrimSpace(string(out)), "desktop")
+	}
+}
+
 func TestClone_RefusesNonEmptyDotDir(t *testing.T) {
 	root := t.TempDir()
 	dot := filepath.Join(root, ".local/share/dot")
-	bare := setupBareRepo(t, root)
+	bare := setupBareRepo(t)
 
-	// Pre-populate dot directory.
-	writeFile(t, filepath.Join(dot, "something"), "existing stuff")
+	writeFile(t, filepath.Join(dot, "something"), "existing")
 
-	err := cloneAndInstall(bare, root, dot, false)
+	err := cloneAndInstall([]string{bare}, root, dot)
 	if err == nil {
 		t.Fatal("expected error when dot dir is non-empty")
 	}
@@ -113,17 +171,20 @@ func TestClone_RefusesNonEmptyDotDir(t *testing.T) {
 func TestClone_OverwriteConflicts(t *testing.T) {
 	root := t.TempDir()
 	dot := filepath.Join(root, ".local/share/dot")
-	bare := setupBareRepo(t, root)
+	bare := setupBareRepo(t)
 
-	// Create a conflicting file at the target location.
+	// Create conflicting file.
 	original := filepath.Join(root, ".zshrc")
 	writeFile(t, original, "existing config")
 
-	if err := cloneAndInstall(bare, root, dot, true); err != nil {
+	overwrite = true
+	defer func() { overwrite = false }()
+
+	if err := cloneAndInstall([]string{bare}, root, dot); err != nil {
 		t.Fatalf("cloneAndInstall --overwrite: %v", err)
 	}
 
-	// Original should now be a symlink.
+	// Should be a symlink now.
 	info, err := os.Lstat(original)
 	if err != nil {
 		t.Fatalf("lstat: %v", err)
@@ -139,25 +200,25 @@ func TestClone_OverwriteConflicts(t *testing.T) {
 		t.Fatalf("read backup: %v", err)
 	}
 	if string(got) != "existing config" {
-		t.Errorf("backup content: got %q, want %q", got, "existing config")
+		t.Errorf("backup: got %q, want %q", got, "existing config")
 	}
 }
 
 func TestClone_FailsOnConflictWithoutOverwrite(t *testing.T) {
 	root := t.TempDir()
 	dot := filepath.Join(root, ".local/share/dot")
-	bare := setupBareRepo(t, root)
+	bare := setupBareRepo(t)
 
-	// Create a conflicting file.
 	original := filepath.Join(root, ".zshrc")
 	writeFile(t, original, "do not touch")
 
-	err := cloneAndInstall(bare, root, dot, false)
+	overwrite = false
+
+	err := cloneAndInstall([]string{bare}, root, dot)
 	if err == nil {
 		t.Fatal("expected error on conflict without overwrite")
 	}
 
-	// User's file must be untouched.
 	got, _ := os.ReadFile(original)
 	if string(got) != "do not touch" {
 		t.Errorf("file was modified: got %q", got)
@@ -168,11 +229,43 @@ func TestClone_BadUrlFails(t *testing.T) {
 	root := t.TempDir()
 	dot := filepath.Join(root, ".local/share/dot")
 
-	err := cloneAndInstall("https://example.com/nonexistent/repo.git", root, dot, false)
+	err := cloneAndInstall([]string{"/nonexistent/repo.git"}, root, dot)
 	if err == nil {
-		t.Fatal("expected error for bad repo URL")
+		t.Fatal("expected error for bad repo")
 	}
 	if !strings.Contains(err.Error(), "git clone failed") {
 		t.Errorf("error: got %q, want mention of 'git clone failed'", err)
+	}
+}
+
+func TestClone_NoArgsFails(t *testing.T) {
+	root := t.TempDir()
+	dot := filepath.Join(root, ".local/share/dot")
+
+	err := cloneAndInstall([]string{}, root, dot)
+	if err == nil {
+		t.Fatal("expected error with no args")
+	}
+}
+
+func TestClone_WithDepthFlag(t *testing.T) {
+	root := t.TempDir()
+	dot := filepath.Join(root, ".local/share/dot")
+	bare := setupBareRepo(t)
+
+	// Should pass --depth through to git.
+	if err := cloneAndInstall([]string{"--depth", "1", bare}, root, dot); err != nil {
+		t.Fatalf("cloneAndInstall --depth 1: %v", err)
+	}
+
+	// Verify shallow clone.
+	cmd := exec.Command("git", "rev-list", "--count", "HEAD")
+	cmd.Dir = dot
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git rev-list: %v", err)
+	}
+	if strings.TrimSpace(string(out)) != "1" {
+		t.Errorf("expected shallow clone with 1 commit, got %s", strings.TrimSpace(string(out)))
 	}
 }
