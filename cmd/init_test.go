@@ -82,7 +82,9 @@ func TestInit_IdempotentOnExistingRepo(t *testing.T) {
 	}
 
 	writeFile(t, filepath.Join(dot, ".zshrc"), "content")
-	AddToIndex(filepath.Join(dot, IndexFilename), Index{relPath: ".zshrc", isDir: false})
+	if err := AddToIndex(filepath.Join(dot, IndexFilename), Index{relPath: ".zshrc", isDir: false}); err != nil {
+		t.Fatalf("AddToIndex: %v", err)
+	}
 
 	if err := dotInit(root, dot); err != nil {
 		t.Fatalf("second init: %v", err)
@@ -107,7 +109,9 @@ func TestInit_DoesNotOverwriteExistingGitignore(t *testing.T) {
 
 	gitignorePath := filepath.Join(dot, ".gitignore")
 	existing, _ := os.ReadFile(gitignorePath)
-	os.WriteFile(gitignorePath, append(existing, []byte("\n*.secret\n")...), 0644)
+	if err := os.WriteFile(gitignorePath, append(existing, []byte("\n*.secret\n")...), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
 
 	if err := dotInit(root, dot); err != nil {
 		t.Fatalf("second init: %v", err)

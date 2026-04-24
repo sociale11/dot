@@ -13,7 +13,9 @@ func setupBareRepo(t *testing.T) string {
 	t.Helper()
 
 	work := filepath.Join(t.TempDir(), "work")
-	os.MkdirAll(work, 0755)
+	if err := os.MkdirAll(work, 0755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
 
 	run := func(args ...string) {
 		t.Helper()
@@ -33,7 +35,9 @@ func setupBareRepo(t *testing.T) string {
 
 	run("git", "init")
 	writeFile(t, filepath.Join(work, ".zshrc"), "export PATH=/foo")
-	AddToIndex(filepath.Join(work, IndexFilename), Index{relPath: ".zshrc", isDir: false})
+	if err := AddToIndex(filepath.Join(work, IndexFilename), Index{relPath: ".zshrc", isDir: false}); err != nil {
+		t.Fatalf("AddToIndex: %v", err)
+	}
 	run("git", "add", ".")
 	run("git", "commit", "-m", "initial")
 
@@ -52,7 +56,9 @@ func setupBareRepoWithBranch(t *testing.T, branch string) string {
 	t.Helper()
 
 	work := filepath.Join(t.TempDir(), "work")
-	os.MkdirAll(work, 0755)
+	if err := os.MkdirAll(work, 0755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
 
 	run := func(args ...string) {
 		t.Helper()
@@ -73,7 +79,9 @@ func setupBareRepoWithBranch(t *testing.T, branch string) string {
 	// main branch
 	run("git", "init", "-b", "main")
 	writeFile(t, filepath.Join(work, ".zshrc"), "main content")
-	AddToIndex(filepath.Join(work, IndexFilename), Index{relPath: ".zshrc", isDir: false})
+	if err := AddToIndex(filepath.Join(work, IndexFilename), Index{relPath: ".zshrc", isDir: false}); err != nil {
+		t.Fatalf("AddToIndex: %v", err)
+	}
 	run("git", "add", ".")
 	run("git", "commit", "-m", "initial")
 

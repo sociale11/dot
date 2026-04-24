@@ -89,8 +89,12 @@ func TestInstall_SkipsAlreadyCorrectSymlink(t *testing.T) {
 	writeFile(t, tracked, "content")
 
 	original := filepath.Join(root, ".zshrc")
-	os.MkdirAll(filepath.Dir(original), 0755)
-	os.Symlink(tracked, original)
+	if err := os.MkdirAll(filepath.Dir(original), 0755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.Symlink(tracked, original); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
 
 	idx := Index{relPath: ".zshrc", isDir: false}
 	if err := AddToIndex(filepath.Join(dot, IndexFilename), idx); err != nil {
@@ -230,8 +234,12 @@ func TestInstall_OverwriteWrongSymlink(t *testing.T) {
 	original := filepath.Join(root, ".zshrc")
 	elsewhere := filepath.Join(t.TempDir(), "wrong")
 	writeFile(t, elsewhere, "wrong target")
-	os.MkdirAll(filepath.Dir(original), 0755)
-	os.Symlink(elsewhere, original)
+	if err := os.MkdirAll(filepath.Dir(original), 0755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.Symlink(elsewhere, original); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
 
 	idx := Index{relPath: ".zshrc", isDir: false}
 	if err := AddToIndex(filepath.Join(dot, IndexFilename), idx); err != nil {
@@ -283,9 +291,15 @@ func TestInstall_MultipleEntries(t *testing.T) {
 	writeFile(t, filepath.Join(dot, ".config/nvim/init.lua"), "nvim")
 
 	indexPath := filepath.Join(dot, IndexFilename)
-	AddToIndex(indexPath, Index{relPath: ".zshrc", isDir: false})
-	AddToIndex(indexPath, Index{relPath: ".gitconfig", isDir: false})
-	AddToIndex(indexPath, Index{relPath: ".config/nvim", isDir: true})
+	for _, idx := range []Index{
+		{relPath: ".zshrc", isDir: false},
+		{relPath: ".gitconfig", isDir: false},
+		{relPath: ".config/nvim", isDir: true},
+	} {
+		if err := AddToIndex(indexPath, idx); err != nil {
+			t.Fatalf("AddToIndex: %v", err)
+		}
+	}
 
 	if err := install(root, dot, false); err != nil {
 		t.Fatalf("install: %v", err)
